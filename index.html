@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-width=1.0">
+    <title>Tutorial: Sistema de Controle de Máquinas e Manutenção</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 30px;
+            background-color: #fcfcfc;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+            margin-top: 1.5em;
+        }
+        h1 {
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        .intro, .step-box {
+            background: #fff;
+            padding: 20px 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            margin-bottom: 30px;
+            border-left: 5px solid #3498db;
+        }
+        pre {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 14px;
+        }
+        code {
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+        .highlight {
+            font-weight: bold;
+            color: #e74c3c;
+        }
+        ul {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Construindo uma API: Sistema de Controle e Manutenção de Máquinas</h1>
+
+    <div class="intro">
+        <h2>Visão Geral do Projeto</h2>
+        <p>Este projeto é uma API RESTful completa. Um sistema real não guarda apenas as máquinas, ele precisa saber <strong>quem</strong> realizou uma ação e manter um <strong>histórico</strong> do que foi feito.</p>
+        
+        <p>Vamos construir três tabelas interligadas:</p>
+        <ul>
+            <li><strong>Usuários:</strong> Quem opera o sistema (técnicos, engenheiros).</li>
+            <li><strong>Máquinas:</strong> O equipamento físico em si.</li>
+            <li><strong>Manutenções:</strong> O registro do conserto. Esta tabela conecta o Usuário à Máquina através de <em>Chaves Estrangeiras (Foreign Keys)</em>.</li>
+        </ul>
+
+        <h3>A Stack Tecnológica e o "Porquê"</h3>
+        <ul>
+            <li><strong>FastAPI:</strong> Framework ultra-rápido para receber requisições web e gerar documentação automática (Swagger).</li>
+            <li><strong>SQLAlchemy (ORM):</strong> Traduz código Python para banco de dados. Permite mudar do SQLite para o PostgreSQL no futuro mudando apenas uma linha.</li>
+            <li><strong>Alembic:</strong> O "controle de versão" do banco de dados. Cria scripts automáticos quando adicionamos novas colunas.</li>
+            <li><strong>Pydantic:</strong> O "segurança" da API. Valida se os dados enviados pelo usuário estão corretos antes de chegarem ao banco.</li>
+            <li><strong>SQLite:</strong> Banco de dados em um único arquivo local. Perfeito para desenvolvimento sem configurações complexas.</li>
+        </ul>
+    </div>
+
+    <div class="step-box">
+        <h2>Passo 1: Preparar o Ambiente e a Estrutura</h2>
+        <p>Para evitar conflitos com outros projetos no computador, criamos um ambiente virtual e instalamos as ferramentas necessárias. A estrutura final do projeto ficará organizada em arquivos com responsabilidades únicas.</p>
+        <pre><code># Cria o ambiente virtual
+python -m venv venv
+
+# Ativa o ambiente (Windows)
+venv\Scripts\activate
+
+# Instala as dependências
+pip install fastapi uvicorn sqlalchemy alembic pydantic</code></pre>
+    </div>
+
+    <div class="step-box">
+        <h2>Passo 2: Conexão com o Banco (database.py)</h2>
+        <p>A aplicação precisa saber onde o banco está. Criamos um "Motor" (engine) que aponta para o arquivo <code>maquinas.db</code>. A <code>SessionLocal</code> será nossa área de trabalho: abrimos para salvar algo e fechamos logo depois.</p>
+        <pre><code>from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
+
+SQLALCHEMY_DATABASE_URL = "sqlite:///./maquinas.db"
+
+# check_same_thread é exigência do SQLite no FastAPI
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+Base = declarative_base()
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()</code></pre>
+    </div>
+
+    <div class="step-box">
+        <h2>Passo 3: As Tabelas e Relacionamentos (models.py)</h2>
+        <p>O SQLAlchemy usa classes Python para criar tabelas. A mágica acontece usando <code>ForeignKey</code> (que diz ao banco quem é o pai) e <code>relationship</code> (que carrega os objetos automaticamente para o Python).</p>
+        <pre><code>from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime
+from sqlalchemy.orm import relationship
+from datetime import datetime
+from database import Base
+
+class Usuario(Base):
+    __tablename__ = "usuarios"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nome = Column(String, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    
+    manutencoes = relationship("Manutencao", back_populates="usuario")
+
+class Maquina(Base):
+    __tablename__ = "maquinas"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nome = Column(String, nullable=False)
+    marca = Column(String, nullable=False)
+    numero_serie = Column(String, unique=True, index=True, nullable=False)
+    em_operacao = Column(Boolean, default=True)
+    
+    manutencoes = relationship("Manutencao", back_populates="maquina")
+
+class Manutencao(Base):
+    __tablename__ = "manutencoes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    descricao = Column(String, nullable=False)
+    data = Column(DateTime, default=datetime.utcnow)
+    
+    maquina_id = Column(Integer, ForeignKey("maquinas.id"), nullable=False)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+
+    maquina = relationship("Maquina", back_populates="manutencoes")
+    usuario = relationship("Usuario", back_populates="manutencoes")</code></pre>
+    </div>
+
+    <div class="step-box">
+        <h2>Passo 4: Validação de Dados (schemas.py)</h2>
+        <p>O Pydantic cria "filtros". Separamos os dados de criação (Create) da resposta da API (Response). Na Manutenção, instruímos a API a devolver os dados do técnico e da máquina juntos (aninhados).</p>
+        <pre><code>from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
+
+# --- SCHEMAS DE USUÁRIO ---
+class UsuarioBase(BaseModel):
+    nome: str
+    email: str
+
+class UsuarioCreate(UsuarioBase): pass
+
+class UsuarioResponse(UsuarioBase):
+    id: int
+    class Config: from_attributes = True
+
+# --- SCHEMAS DE MÁQUINA ---
+class MaquinaBase(BaseModel):
+    nome: str
+    marca: str
+    numero_serie: str
+    em_operacao: bool = True
+
+class MaquinaCreate(MaquinaBase): pass
+
+class MaquinaResponse(MaquinaBase):
+    id: int
+    class Config: from_attributes = True
+
+# --- SCHEMAS DE MANUTENÇÃO ---
+class ManutencaoBase(BaseModel):
+    descricao: str
+    maquina_id: int
+    usuario_id: int
+
+class ManutencaoCreate(ManutencaoBase): pass
+
+class ManutencaoResponse(ManutencaoBase):
+    id: int
+    data: datetime
+    maquina: Optional[MaquinaResponse] = None
+    usuario: Optional[UsuarioResponse] = None
+
+    class Config: from_attributes = True</code></pre>
+    </div>
+
+    <div class="step-box">
+        <h2>Passo 5: Criar o Banco Fisicamente (Alembic)</h2>
+        <p>Configuramos o Alembic para ler o <code>models.py</code> e gerar o banco. Execute no terminal:</p>
+        <pre><code>alembic init alembic</code></pre>
+        <p>Abra o arquivo <strong>alembic.ini</strong> e altere:</p>
+        <pre><code>sqlalchemy.url = sqlite:///./maquinas.db</code></pre>
+        <p>Abra <strong>alembic/env.py</strong>, importe os modelos e altere o target:</p>
+        <pre><code>import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+from database import Base
+import models
+
+# Altere target_metadata para:
+target_metadata = Base.metadata</code></pre>
+        <p>Gere e aplique a migração no terminal:</p>
+        <pre><code>alembic revision --autogenerate -m "Criacao das tabelas"
+alembic upgrade head</code></pre>
+    </div>
+
+    <div class="step-box">
+        <h2>Passo 6: A API e as Regras de Negócio (main.py)</h2>
+        <p>Aqui expomos as URLs. Note as regras de negócio: verificamos se o email ou número de série já existem, e ao registrar uma manutenção, validamos se a máquina e o técnico são reais.</p>
+        <pre><code>from fastapi import FastAPI, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+import models, schemas
+from database import get_db
+
+app = FastAPI(title="Controle de Manutenção")
+
+# === USUÁRIOS ===
+@app.post("/usuarios/", response_model=schemas.UsuarioResponse)
+def criar_usuario(usuario: schemas.UsuarioCreate, db: Session = Depends(get_db)):
+    if db.query(models.Usuario).filter(models.Usuario.email == usuario.email).first():
+        raise HTTPException(status_code=400, detail="Email já cadastrado.")
+    novo = models.Usuario(**usuario.model_dump())
+    db.add(novo)
+    db.commit()
+    db.refresh(novo)
+    return novo
+
+# === MÁQUINAS ===
+@app.post("/maquinas/", response_model=schemas.MaquinaResponse)
+def criar_maquina(maquina: schemas.MaquinaCreate, db: Session = Depends(get_db)):
+    if db.query(models.Maquina).filter(models.Maquina.numero_serie == maquina.numero_serie).first():
+        raise HTTPException(status_code=400, detail="Série já cadastrada.")
+    nova = models.Maquina(**maquina.model_dump())
+    db.add(nova)
+    db.commit()
+    db.refresh(nova)
+    return nova
+
+# === MANUTENÇÕES ===
+@app.post("/manutencoes/", response_model=schemas.ManutencaoResponse)
+def registrar_manutencao(manu: schemas.ManutencaoCreate, db: Session = Depends(get_db)):
+    if not db.query(models.Maquina).filter(models.Maquina.id == manu.maquina_id).first():
+        raise HTTPException(status_code=404, detail="Máquina não encontrada.")
+    if not db.query(models.Usuario).filter(models.Usuario.id == manu.usuario_id).first():
+        raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+
+    nova_manu = models.Manutencao(**manu.model_dump())
+    db.add(nova_manu)
+    
+    # Atualiza o status da máquina
+    db.query(models.Maquina).filter(models.Maquina.id == manu.maquina_id).update({"em_operacao": True})
+    
+    db.commit()
+    db.refresh(nova_manu)
+    return nova_manu
+
+@app.get("/manutencoes/", response_model=List[schemas.ManutencaoResponse])
+def listar_manutencoes(db: Session = Depends(get_db)):
+    return db.query(models.Manutencao).all()</code></pre>
+    </div>
+
+    <div class="step-box">
+        <h2>Passo 7: Rodar e Testar</h2>
+        <p>No terminal, inicie o servidor:</p>
+        <pre><code>uvicorn main:app --reload</code></pre>
+        <p>Acesse <strong>http://127.0.0.1:8000/docs</strong> no seu navegador. Teste na seguinte ordem: crie um Usuário, crie uma Máquina, e depois registre uma Manutenção usando os IDs gerados.</p>
+    </div>
+
+    <!-- 
+    ====================================================================
+    PROTECAO-CONTEUDO.JS
+    Script injetado conforme solicitado para evitar cópias e prints.
+    ==================================================================== 
+    -->
+    <script>
+    (function () {
+      "use strict";
+
+      // ---------- CONFIGURAÇÃO (edite se quiser) ----------
+      const CONFIG = {
+        watermarkText: "CÓPIA PROTEGIDA",   // texto da marca d'água de fundo
+        showWatermark: true,                 // true/false para ligar/desligar a marca d'água
+        guardTitle: "Conteúdo protegido contra captura",
+        guardSubtitle: "A tela é ocultada quando a janela perde o foco ou uma captura é detectada.",
+      };
+
+      // ---------- injeta o CSS necessário ----------
+      const style = document.createElement("style");
+      style.textContent = `
+        body{
+          -webkit-user-select:none; -moz-user-select:none; user-select:none;
+          -webkit-touch-callout:none;
+        }
+        ::selection{ background:transparent; }
+
+        #pc-watermark{
+          position:fixed; inset:0; z-index:99998; pointer-events:none;
+          overflow:hidden; opacity:.045;
+        }
+        #pc-watermark .pc-row{
+          display:flex; gap:70px; white-space:nowrap;
+          transform:rotate(-16deg);
+          font-family:sans-serif; font-weight:700; font-size:22px;
+          letter-spacing:.08em; color:#000;
+        }
+
+        .pc-content-blurred{
+          filter: blur(22px) brightness(.6) !important;
+          transition: filter .12s ease;
+          pointer-events:none;
+        }
+        #pc-guard{
+          position:fixed; inset:0; z-index:99999;
+          display:none; align-items:center; justify-content:center;
+          flex-direction:column; gap:10px; text-align:center; padding:24px;
+          background:#05070C; color:#fff; font-family:sans-serif;
+        }
+        #pc-guard.show{ display:flex; }
+        #pc-guard .pc-g-title{ font-weight:700; font-size:16px; }
+        #pc-guard .pc-g-sub{ font-size:12px; color:#9aa; max-width:36ch; }
+
+        @media print{
+          body *{ display:none !important; }
+          body::after{
+            content:"Impressão desativada — material de uso exclusivo em tela.";
+            display:block !important; padding:60px; font-family:sans-serif; font-size:18px;
+          }
+        }
+      `;
+      document.head.appendChild(style);
+
+      // ---------- injeta a marca d'água e o overlay de guarda ----------
+      function injectDom() {
+        if (CONFIG.showWatermark) {
+          const wm = document.createElement("div");
+          wm.id = "pc-watermark";
+          for (let i = 0; i < 14; i++) {
+            const row = document.createElement("div");
+            row.className = "pc-row";
+            row.style.marginLeft = i % 2 === 0 ? "-80px" : "-20px";
+            for (let j = 0; j < 8; j++) {
+              const span = document.createElement("span");
+              span.textContent = CONFIG.watermarkText;
+              row.appendChild(span);
+            }
+            wm.appendChild(row);
+          }
+          document.body.appendChild(wm);
+        }
+
+        const guard = document.createElement("div");
+        guard.id = "pc-guard";
+        guard.innerHTML = `
+          <div class="pc-g-title">${CONFIG.guardTitle}</div>
+          <div class="pc-g-sub">${CONFIG.guardSubtitle}</div>
+        `;
+        document.body.appendChild(guard);
+      }
+
+      // ---------- bloqueios de cópia / seleção / atalhos ----------
+      function bindBlockers() {
+        document.addEventListener("copy", (e) => e.preventDefault());
+        document.addEventListener("cut", (e) => e.preventDefault());
+        document.addEventListener("contextmenu", (e) => e.preventDefault());
+        document.addEventListener("selectstart", (e) => e.preventDefault());
+        document.addEventListener("dragstart", (e) => e.preventDefault());
+
+        document.addEventListener("keydown", (e) => {
+          const k = e.key.toLowerCase();
+          const blockedCombo = (e.ctrlKey || e.metaKey) && ["c", "x", "s", "p", "u"].includes(k);
+          const blockedDevtools =
+            e.key === "F12" || ((e.ctrlKey || e.metaKey) && e.shiftKey && ["i", "j", "c"].includes(k));
+          if (blockedCombo || blockedDevtools) e.preventDefault();
+
+          // atalhos comuns de captura (best-effort, ver aviso no topo do arquivo)
+          const macCapture = e.metaKey && e.shiftKey && ["3", "4", "5"].includes(k);
+          const winCapture = e.shiftKey && e.metaKey && k === "s";
+          if (macCapture || winCapture) {
+            showGuard();
+            setTimeout(hideGuard, 2500);
+          }
+        });
+
+        document.addEventListener("keyup", (e) => {
+          if (e.key === "PrintScreen") {
+            showGuard();
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText("").catch(() => {});
+            }
+            setTimeout(hideGuard, 2500);
+          }
+        });
+      }
+
+      // ---------- blur ao perder foco (alt-tab, troca de janela) ----------
+      function showGuard() {
+        document.body.classList.add("pc-content-blurred");
+        const guard = document.getElementById("pc-guard");
+        if (guard) guard.classList.add("show");
+      }
+      function hideGuard() {
+        document.body.classList.remove("pc-content-blurred");
+        const guard = document.getElementById("pc-guard");
+        if (guard) guard.classList.remove("show");
+      }
+
+      function bindFocusGuard() {
+        window.addEventListener("blur", showGuard);
+        window.addEventListener("focus", hideGuard);
+        document.addEventListener("visibilitychange", () => {
+          if (document.hidden) showGuard();
+          else hideGuard();
+        });
+      }
+
+      // ---------- inicialização ----------
+      function init() {
+        injectDom();
+        bindBlockers();
+        bindFocusGuard();
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", init);
+      } else {
+        init();
+      }
+    })();
+    </script>
+</body>
+</html>
