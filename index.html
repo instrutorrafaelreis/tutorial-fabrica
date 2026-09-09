@@ -2,8 +2,8 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-width=1.0">
-    <title>Tutorial: Sistema de Controle de Máquinas e Manutenção</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tutorial Completo: Sistema de Manutenção (Back-end + Front-end)</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -30,6 +30,13 @@
             margin-bottom: 30px;
             border-left: 5px solid #3498db;
         }
+        .warning {
+            border-left: 5px solid #e74c3c;
+            background-color: #fdf5f5;
+        }
+        .front-end {
+            border-left: 5px solid #2ecc71;
+        }
         pre {
             background-color: #1e1e1e;
             color: #d4d4d4;
@@ -48,36 +55,34 @@
         ul {
             margin-bottom: 20px;
         }
+        .section-title {
+            background-color: #2c3e50;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+            margin: 40px 0 20px 0;
+        }
     </style>
 </head>
 <body>
 
-    <h1>Construindo uma API: Sistema de Controle e Manutenção de Máquinas</h1>
+    <h1>Desenvolvimento Full-Stack: Controle de Máquinas e Manutenção</h1>
 
     <div class="intro">
         <h2>Visão Geral do Projeto</h2>
-        <p>Este projeto é uma API RESTful completa. Um sistema real não guarda apenas as máquinas, ele precisa saber <strong>quem</strong> realizou uma ação e manter um <strong>histórico</strong> do que foi feito.</p>
-        
-        <p>Vamos construir três tabelas interligadas:</p>
+        <p>Neste treinamento prático, vamos construir um sistema industrial completo. O projeto é dividido em duas grandes camadas que conversam entre si:</p>
         <ul>
-            <li><strong>Usuários:</strong> Quem opera o sistema (técnicos, engenheiros).</li>
-            <li><strong>Máquinas:</strong> O equipamento físico em si.</li>
-            <li><strong>Manutenções:</strong> O registro do conserto. Esta tabela conecta o Usuário à Máquina através de <em>Chaves Estrangeiras (Foreign Keys)</em>.</li>
-        </ul>
-
-        <h3>A Stack Tecnológica e o "Porquê"</h3>
-        <ul>
-            <li><strong>FastAPI:</strong> Framework ultra-rápido para receber requisições web e gerar documentação automática (Swagger).</li>
-            <li><strong>SQLAlchemy (ORM):</strong> Traduz código Python para banco de dados. Permite mudar do SQLite para o PostgreSQL no futuro mudando apenas uma linha.</li>
-            <li><strong>Alembic:</strong> O "controle de versão" do banco de dados. Cria scripts automáticos quando adicionamos novas colunas.</li>
-            <li><strong>Pydantic:</strong> O "segurança" da API. Valida se os dados enviados pelo usuário estão corretos antes de chegarem ao banco.</li>
-            <li><strong>SQLite:</strong> Banco de dados em um único arquivo local. Perfeito para desenvolvimento sem configurações complexas.</li>
+            <li><strong>O Back-end (A "Mente"):</strong> Feito em <em>Python</em> com <em>FastAPI</em>. É o servidor que processa as regras de negócio, valida dados de técnicos e salva informações no banco de dados <em>SQLite</em> usando <em>SQLAlchemy</em>.</li>
+            <li><strong>O Front-end (O "Rosto"):</strong> Feito em <em>HTML, CSS e JavaScript</em>. É o painel visual onde o operador clica, digita e visualiza os relatórios. Ele se comunica com o Back-end através do comando <code>fetch</code>.</li>
         </ul>
     </div>
 
+    <div class="section-title">PARTE 1: O BACK-END (API E BANCO DE DADOS)</div>
+
     <div class="step-box">
         <h2>Passo 1: Preparar o Ambiente e a Estrutura</h2>
-        <p>Para evitar conflitos com outros projetos no computador, criamos um ambiente virtual e instalamos as ferramentas necessárias. A estrutura final do projeto ficará organizada em arquivos com responsabilidades únicas.</p>
+        <p>Crie um ambiente virtual para isolar as bibliotecas do projeto e instale as dependências.</p>
         <pre><code># Cria o ambiente virtual
 python -m venv venv
 
@@ -90,19 +95,16 @@ pip install fastapi uvicorn sqlalchemy alembic pydantic</code></pre>
 
     <div class="step-box">
         <h2>Passo 2: Conexão com o Banco (database.py)</h2>
-        <p>A aplicação precisa saber onde o banco está. Criamos um "Motor" (engine) que aponta para o arquivo <code>maquinas.db</code>. A <code>SessionLocal</code> será nossa área de trabalho: abrimos para salvar algo e fechamos logo depois.</p>
+        <p>Configure o motor do SQLAlchemy para apontar para um arquivo SQLite local (<code>maquinas.db</code>).</p>
         <pre><code>from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///./maquinas.db"
 
-# check_same_thread é exigência do SQLite no FastAPI
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
 )
-
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
 Base = declarative_base()
 
 def get_db():
@@ -115,7 +117,7 @@ def get_db():
 
     <div class="step-box">
         <h2>Passo 3: As Tabelas e Relacionamentos (models.py)</h2>
-        <p>O SQLAlchemy usa classes Python para criar tabelas. A mágica acontece usando <code>ForeignKey</code> (que diz ao banco quem é o pai) e <code>relationship</code> (que carrega os objetos automaticamente para o Python).</p>
+        <p>Defina as tabelas de <strong>Usuários</strong>, <strong>Máquinas</strong> e <strong>Manutenções</strong>. A tabela de manutenções conecta o técnico ao equipamento usando chaves estrangeiras.</p>
         <pre><code>from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -123,31 +125,25 @@ from database import Base
 
 class Usuario(Base):
     __tablename__ = "usuarios"
-
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
-    
     manutencoes = relationship("Manutencao", back_populates="usuario")
 
 class Maquina(Base):
     __tablename__ = "maquinas"
-
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String, nullable=False)
     marca = Column(String, nullable=False)
     numero_serie = Column(String, unique=True, index=True, nullable=False)
     em_operacao = Column(Boolean, default=True)
-    
     manutencoes = relationship("Manutencao", back_populates="maquina")
 
 class Manutencao(Base):
     __tablename__ = "manutencoes"
-
     id = Column(Integer, primary_key=True, index=True)
     descricao = Column(String, nullable=False)
     data = Column(DateTime, default=datetime.utcnow)
-    
     maquina_id = Column(Integer, ForeignKey("maquinas.id"), nullable=False)
     usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
 
@@ -157,96 +153,94 @@ class Manutencao(Base):
 
     <div class="step-box">
         <h2>Passo 4: Validação de Dados (schemas.py)</h2>
-        <p>O Pydantic cria "filtros". Separamos os dados de criação (Create) da resposta da API (Response). Na Manutenção, instruímos a API a devolver os dados do técnico e da máquina juntos (aninhados).</p>
+        <p>Use o Pydantic para garantir que a API só aceite dados corretos.</p>
         <pre><code>from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 
-# --- SCHEMAS DE USUÁRIO ---
 class UsuarioBase(BaseModel):
     nome: str
     email: str
-
 class UsuarioCreate(UsuarioBase): pass
-
 class UsuarioResponse(UsuarioBase):
     id: int
     class Config: from_attributes = True
 
-# --- SCHEMAS DE MÁQUINA ---
 class MaquinaBase(BaseModel):
     nome: str
     marca: str
     numero_serie: str
     em_operacao: bool = True
-
 class MaquinaCreate(MaquinaBase): pass
-
 class MaquinaResponse(MaquinaBase):
     id: int
     class Config: from_attributes = True
 
-# --- SCHEMAS DE MANUTENÇÃO ---
 class ManutencaoBase(BaseModel):
     descricao: str
     maquina_id: int
     usuario_id: int
-
 class ManutencaoCreate(ManutencaoBase): pass
-
 class ManutencaoResponse(ManutencaoBase):
     id: int
     data: datetime
     maquina: Optional[MaquinaResponse] = None
     usuario: Optional[UsuarioResponse] = None
-
     class Config: from_attributes = True</code></pre>
     </div>
 
     <div class="step-box">
         <h2>Passo 5: Criar o Banco Fisicamente (Alembic)</h2>
-        <p>Configuramos o Alembic para ler o <code>models.py</code> e gerar o banco. Execute no terminal:</p>
-        <pre><code>alembic init alembic</code></pre>
-        <p>Abra o arquivo <strong>alembic.ini</strong> e altere:</p>
+        <p>No terminal, inicialize o Alembic: <code>alembic init alembic</code></p>
+        <p>Altere o arquivo <strong>alembic.ini</strong>:</p>
         <pre><code>sqlalchemy.url = sqlite:///./maquinas.db</code></pre>
-        <p>Abra <strong>alembic/env.py</strong>, importe os modelos e altere o target:</p>
+        <p>No arquivo <strong>alembic/env.py</strong>, importe seus modelos:</p>
         <pre><code>import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 from database import Base
 import models
-
-# Altere target_metadata para:
 target_metadata = Base.metadata</code></pre>
         <p>Gere e aplique a migração no terminal:</p>
-        <pre><code>alembic revision --autogenerate -m "Criacao das tabelas"
+        <pre><code>alembic revision --autogenerate -m "Tabelas criadas"
 alembic upgrade head</code></pre>
     </div>
 
-    <div class="step-box">
-        <h2>Passo 6: A API e as Regras de Negócio (main.py)</h2>
-        <p>Aqui expomos as URLs. Note as regras de negócio: verificamos se o email ou número de série já existem, e ao registrar uma manutenção, validamos se a máquina e o técnico são reais.</p>
+    <div class="step-box warning">
+        <h2>Passo 6: A API e a Liberação do CORS (main.py)</h2>
+        <p>Aqui criamos as rotas e ativamos o <strong>CORSMiddleware</strong>. Sem o CORS, o navegador bloqueará o Front-end de conversar com o Back-end por medidas de segurança.</p>
         <pre><code>from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List
 import models, schemas
 from database import get_db
 
-app = FastAPI(title="Controle de Manutenção")
+app = FastAPI(title="API de Manutenção")
 
-# === USUÁRIOS ===
+# Libera o acesso do Front-end (CORS)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 @app.post("/usuarios/", response_model=schemas.UsuarioResponse)
 def criar_usuario(usuario: schemas.UsuarioCreate, db: Session = Depends(get_db)):
     if db.query(models.Usuario).filter(models.Usuario.email == usuario.email).first():
-        raise HTTPException(status_code=400, detail="Email já cadastrado.")
+        raise HTTPException(status_code=400, detail="Email já existe.")
     novo = models.Usuario(**usuario.model_dump())
     db.add(novo)
     db.commit()
     db.refresh(novo)
     return novo
 
-# === MÁQUINAS ===
+@app.get("/usuarios/", response_model=List[schemas.UsuarioResponse])
+def listar_usuarios(db: Session = Depends(get_db)):
+    return db.query(models.Usuario).all()
+
 @app.post("/maquinas/", response_model=schemas.MaquinaResponse)
 def criar_maquina(maquina: schemas.MaquinaCreate, db: Session = Depends(get_db)):
     if db.query(models.Maquina).filter(models.Maquina.numero_serie == maquina.numero_serie).first():
@@ -257,7 +251,10 @@ def criar_maquina(maquina: schemas.MaquinaCreate, db: Session = Depends(get_db))
     db.refresh(nova)
     return nova
 
-# === MANUTENÇÕES ===
+@app.get("/maquinas/", response_model=List[schemas.MaquinaResponse])
+def listar_maquinas(db: Session = Depends(get_db)):
+    return db.query(models.Maquina).all()
+
 @app.post("/manutencoes/", response_model=schemas.ManutencaoResponse)
 def registrar_manutencao(manu: schemas.ManutencaoCreate, db: Session = Depends(get_db)):
     if not db.query(models.Maquina).filter(models.Maquina.id == manu.maquina_id).first():
@@ -280,32 +277,74 @@ def listar_manutencoes(db: Session = Depends(get_db)):
     return db.query(models.Manutencao).all()</code></pre>
     </div>
 
-    <div class="step-box">
-        <h2>Passo 7: Rodar e Testar</h2>
-        <p>No terminal, inicie o servidor:</p>
-        <pre><code>uvicorn main:app --reload</code></pre>
-        <p>Acesse <strong>http://127.0.0.1:8000/docs</strong> no seu navegador. Teste na seguinte ordem: crie um Usuário, crie uma Máquina, e depois registre uma Manutenção usando os IDs gerados.</p>
+    <div class="section-title">PARTE 2: O FRONT-END (O PAINEL VISUAL)</div>
+
+    <div class="step-box front-end">
+        <h2>Passo 7: Consumindo a API com JavaScript</h2>
+        <p>Crie um arquivo chamado <strong>dashboard.html</strong>. O Front-end usa a função <code>fetch()</code> para enviar dados (POST) ou buscar dados (GET) do FastAPI.</p>
+        <p>Abaixo está um resumo de como o HTML e o JavaScript operam juntos. Quando o usuário clica em "Cadastrar Técnico", o script pega os valores dos inputs e envia para <code>http://127.0.0.1:8000/usuarios/</code>.</p>
+        <pre><code>&lt;!-- Exemplo da Estrutura Visual --&gt;
+&lt;h2&gt;Cadastrar Técnico&lt;/h2&gt;
+&lt;form id="formUsuario"&gt;
+    &lt;input type="text" id="nomeUsuario" placeholder="Nome" required&gt;
+    &lt;input type="email" id="emailUsuario" placeholder="Email" required&gt;
+    &lt;button type="submit"&gt;Cadastrar&lt;/button&gt;
+&lt;/form&gt;
+
+&lt;script&gt;
+    const API_URL = "http://127.0.0.1:8000";
+
+    // Enviando dados para o Back-end (POST)
+    document.getElementById('formUsuario').addEventListener('submit', async (e) =&gt; {
+        e.preventDefault();
+        
+        // Empacota os dados
+        const payload = {
+            nome: document.getElementById('nomeUsuario').value,
+            email: document.getElementById('emailUsuario').value
+        };
+        
+        // Dispara para o servidor
+        const res = await fetch(`${API_URL}/usuarios/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        if (res.ok) alert('Técnico salvo com sucesso no banco!');
+    });
+
+    // Buscando dados do Back-end (GET)
+    async function carregarMaquinas() {
+        const res = await fetch(`${API_URL}/maquinas/`);
+        const maquinas = await res.json();
+        console.log(maquinas); // Mostra a lista vinda do banco
+    }
+&lt;/script&gt;</code></pre>
     </div>
 
-    <!-- 
-    ====================================================================
-    PROTECAO-CONTEUDO.JS
-    Script injetado conforme solicitado para evitar cópias e prints.
-    ==================================================================== 
-    -->
+    <div class="step-box front-end">
+        <h2>Passo 8: Rodando o Sistema Completo</h2>
+        <p>Para ver a mágica acontecer, as duas partes precisam rodar simultaneamente:</p>
+        <ol>
+            <li><strong>Ligue o Motor (Servidor):</strong> No terminal do VS Code, inicie a API rodando:<br> <code>uvicorn main:app --reload</code></li>
+            <li><strong>Abra a Interface:</strong> Dê um duplo clique no arquivo <code>dashboard.html</code> (ele abrirá no seu navegador Chrome/Edge).</li>
+            <li><strong>Teste o Fluxo:</strong> Cadastre um técnico pelo painel HTML, depois cadastre uma máquina, e por fim gere uma Ordem de Serviço vinculando os dois. Tudo será validado pelo Python e salvo no SQLite.</li>
+        </ol>
+    </div>
+
+    <!-- SCRIPT DE PROTEÇÃO (CÓPIA E PRINT) -->
     <script>
     (function () {
       "use strict";
 
-      // ---------- CONFIGURAÇÃO (edite se quiser) ----------
       const CONFIG = {
-        watermarkText: "CÓPIA PROTEGIDA",   // texto da marca d'água de fundo
-        showWatermark: true,                 // true/false para ligar/desligar a marca d'água
+        watermarkText: "CÓPIA PROTEGIDA",
+        showWatermark: true,
         guardTitle: "Conteúdo protegido contra captura",
         guardSubtitle: "A tela é ocultada quando a janela perde o foco ou uma captura é detectada.",
       };
 
-      // ---------- injeta o CSS necessário ----------
       const style = document.createElement("style");
       style.textContent = `
         body{
@@ -350,7 +389,6 @@ def listar_manutencoes(db: Session = Depends(get_db)):
       `;
       document.head.appendChild(style);
 
-      // ---------- injeta a marca d'água e o overlay de guarda ----------
       function injectDom() {
         if (CONFIG.showWatermark) {
           const wm = document.createElement("div");
@@ -378,7 +416,6 @@ def listar_manutencoes(db: Session = Depends(get_db)):
         document.body.appendChild(guard);
       }
 
-      // ---------- bloqueios de cópia / seleção / atalhos ----------
       function bindBlockers() {
         document.addEventListener("copy", (e) => e.preventDefault());
         document.addEventListener("cut", (e) => e.preventDefault());
@@ -393,7 +430,6 @@ def listar_manutencoes(db: Session = Depends(get_db)):
             e.key === "F12" || ((e.ctrlKey || e.metaKey) && e.shiftKey && ["i", "j", "c"].includes(k));
           if (blockedCombo || blockedDevtools) e.preventDefault();
 
-          // atalhos comuns de captura (best-effort, ver aviso no topo do arquivo)
           const macCapture = e.metaKey && e.shiftKey && ["3", "4", "5"].includes(k);
           const winCapture = e.shiftKey && e.metaKey && k === "s";
           if (macCapture || winCapture) {
@@ -413,7 +449,6 @@ def listar_manutencoes(db: Session = Depends(get_db)):
         });
       }
 
-      // ---------- blur ao perder foco (alt-tab, troca de janela) ----------
       function showGuard() {
         document.body.classList.add("pc-content-blurred");
         const guard = document.getElementById("pc-guard");
@@ -434,7 +469,6 @@ def listar_manutencoes(db: Session = Depends(get_db)):
         });
       }
 
-      // ---------- inicialização ----------
       function init() {
         injectDom();
         bindBlockers();
